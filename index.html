@@ -1,0 +1,1104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    >
+
+    <meta name="theme-color" content="#050805">
+
+    <meta
+        name="description"
+        content="NIGHTflux — Digital low-light investigation camera by Astral Apparatus."
+    >
+
+    <title>NIGHTflux v1</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <!-- =========================================================
+         APP
+    ========================================================== -->
+
+    <div id="app">
+
+        <!-- =====================================================
+             HEADER
+        ====================================================== -->
+
+        <header class="app-header">
+
+            <div class="brand">
+                <div class="brand-title">
+                    NIGHTflux <span>v1</span>
+                </div>
+
+                <div class="brand-subtitle">
+                    Astral Apparatus Program
+                </div>
+            </div>
+
+            <div class="header-status">
+                <span id="cameraStatusDot" class="status-dot offline"></span>
+                <span id="cameraStatusText">CAMERA OFFLINE</span>
+            </div>
+
+        </header>
+
+
+        <!-- =====================================================
+             MAIN CONTENT
+        ====================================================== -->
+
+        <main class="main-content">
+
+
+            <!-- =================================================
+                 CAMERA VIEW
+            ================================================== -->
+
+            <section class="camera-section">
+
+                <div class="camera-frame">
+
+                    <!-- Live camera -->
+                    <video
+                        id="cameraView"
+                        autoplay
+                        playsinline
+                        muted
+                    ></video>
+
+                    <!-- Processed camera canvas -->
+                    <canvas id="processingCanvas"></canvas>
+
+                    <!-- Hidden canvas used for photos -->
+                    <canvas
+                        id="captureCanvas"
+                        class="hidden"
+                    ></canvas>
+
+
+                    <!-- Camera overlay -->
+                    <div class="camera-overlay">
+
+                        <!-- Top information -->
+                        <div class="overlay-top">
+
+                            <div class="overlay-badge">
+                                NIGHTflux
+                            </div>
+
+                            <div
+                                id="recordingIndicator"
+                                class="recording-indicator hidden"
+                            >
+                                <span class="recording-dot"></span>
+                                REC
+                            </div>
+
+                        </div>
+
+
+                        <!-- Center reticle -->
+                        <div class="reticle">
+                            <div class="reticle-corner top-left"></div>
+                            <div class="reticle-corner top-right"></div>
+                            <div class="reticle-corner bottom-left"></div>
+                            <div class="reticle-corner bottom-right"></div>
+
+                            <div class="reticle-center"></div>
+                        </div>
+
+
+                        <!-- Bottom information -->
+                        <div class="overlay-bottom">
+
+                            <div class="overlay-data">
+
+                                <span>
+                                    MODE:
+                                    <strong id="overlayMode">
+                                        NORMAL
+                                    </strong>
+                                </span>
+
+                                <span>
+                                    <strong id="overlayTime">
+                                        00:00:00
+                                    </strong>
+                                </span>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- Camera startup message -->
+                    <div
+                        id="cameraMessage"
+                        class="camera-message"
+                    >
+                        <div class="camera-message-icon">
+                            ◉
+                        </div>
+
+                        <h2>NIGHTflux</h2>
+
+                        <p>
+                            Camera access is required to begin.
+                        </p>
+
+                        <button
+                            id="startCameraButton"
+                            class="primary-button"
+                            type="button"
+                        >
+                            START CAMERA
+                        </button>
+                    </div>
+
+                </div>
+
+            </section>
+
+
+            <!-- =================================================
+                 QUICK CONTROLS
+            ================================================== -->
+
+            <section class="quick-controls">
+
+                <button
+                    id="photoButton"
+                    class="control-button capture-button"
+                    type="button"
+                    disabled
+                >
+                    <span class="button-icon">●</span>
+                    <span>PHOTO</span>
+                </button>
+
+                <button
+                    id="videoButton"
+                    class="control-button"
+                    type="button"
+                    disabled
+                >
+                    <span
+                        id="videoButtonIcon"
+                        class="button-icon"
+                    >
+                        ■
+                    </span>
+
+                    <span id="videoButtonText">
+                        RECORD
+                    </span>
+                </button>
+
+                <button
+                    id="fullscreenButton"
+                    class="control-button"
+                    type="button"
+                >
+                    <span class="button-icon">⛶</span>
+                    <span>FULLSCREEN</span>
+                </button>
+
+            </section>
+
+
+            <!-- =================================================
+                 VISION MODES
+            ================================================== -->
+
+            <section class="panel">
+
+                <div class="panel-header">
+
+                    <div>
+                        <h2>VISION MODE</h2>
+
+                        <p>
+                            Digital image processing
+                        </p>
+                    </div>
+
+                    <div class="panel-value">
+                        <span id="currentMode">
+                            NORMAL
+                        </span>
+                    </div>
+
+                </div>
+
+
+                <div class="mode-grid">
+
+                    <button
+                        class="mode-button active"
+                        data-mode="normal"
+                        type="button"
+                    >
+                        <span class="mode-icon">◉</span>
+                        <span>NORMAL</span>
+                    </button>
+
+
+                    <button
+                        class="mode-button"
+                        data-mode="green"
+                        type="button"
+                    >
+                        <span class="mode-icon">◉</span>
+                        <span>GREEN</span>
+                    </button>
+
+
+                    <button
+                        class="mode-button"
+                        data-mode="whitehot"
+                        type="button"
+                    >
+                        <span class="mode-icon">◐</span>
+                        <span>WHITE HOT</span>
+                    </button>
+
+
+                    <button
+                        class="mode-button"
+                        data-mode="negative"
+                        type="button"
+                    >
+                        <span class="mode-icon">◑</span>
+                        <span>NEGATIVE</span>
+                    </button>
+
+
+                    <button
+                        class="mode-button"
+                        data-mode="edge"
+                        type="button"
+                    >
+                        <span class="mode-icon">◇</span>
+                        <span>EDGE</span>
+                    </button>
+
+
+                    <button
+                        class="mode-button"
+                        data-mode="lowlight"
+                        type="button"
+                    >
+                        <span class="mode-icon">☾</span>
+                        <span>LOW LIGHT</span>
+                    </button>
+
+                </div>
+
+            </section>
+
+
+            <!-- =================================================
+                 IMAGE CONTROLS
+            ================================================== -->
+
+            <section class="panel">
+
+                <div class="panel-header">
+
+                    <div>
+                        <h2>IMAGE CONTROLS</h2>
+
+                        <p>
+                            Adjust digital enhancement
+                        </p>
+                    </div>
+
+                    <button
+                        id="resetControlsButton"
+                        class="small-button"
+                        type="button"
+                    >
+                        RESET
+                    </button>
+
+                </div>
+
+
+                <!-- Brightness -->
+
+                <div class="slider-control">
+
+                    <div class="slider-header">
+
+                        <label for="brightnessSlider">
+                            BRIGHTNESS
+                        </label>
+
+                        <span id="brightnessValue">
+                            0
+                        </span>
+
+                    </div>
+
+                    <input
+                        id="brightnessSlider"
+                        type="range"
+                        min="-100"
+                        max="100"
+                        value="0"
+                        step="1"
+                    >
+
+                </div>
+
+
+                <!-- Contrast -->
+
+                <div class="slider-control">
+
+                    <div class="slider-header">
+
+                        <label for="contrastSlider">
+                            CONTRAST
+                        </label>
+
+                        <span id="contrastValue">
+                            100%
+                        </span>
+
+                    </div>
+
+                    <input
+                        id="contrastSlider"
+                        type="range"
+                        min="50"
+                        max="200"
+                        value="100"
+                        step="1"
+                    >
+
+                </div>
+
+
+                <!-- Gamma -->
+
+                <div class="slider-control">
+
+                    <div class="slider-header">
+
+                        <label for="gammaSlider">
+                            GAMMA
+                        </label>
+
+                        <span id="gammaValue">
+                            1.0
+                        </span>
+
+                    </div>
+
+                    <input
+                        id="gammaSlider"
+                        type="range"
+                        min="0.4"
+                        max="2.5"
+                        value="1"
+                        step="0.1"
+                    >
+
+                </div>
+
+
+                <!-- Sharpness -->
+
+                <div class="slider-control">
+
+                    <div class="slider-header">
+
+                        <label for="sharpnessSlider">
+                            SHARPNESS
+                        </label>
+
+                        <span id="sharpnessValue">
+                            0
+                        </span>
+
+                    </div>
+
+                    <input
+                        id="sharpnessSlider"
+                        type="range"
+                        min="0"
+                        max="100"
+                        value="0"
+                        step="1"
+                    >
+
+                </div>
+
+
+                <!-- Digital Zoom -->
+
+                <div class="slider-control">
+
+                    <div class="slider-header">
+
+                        <label for="zoomSlider">
+                            DIGITAL ZOOM
+                        </label>
+
+                        <span id="zoomValue">
+                            1.0×
+                        </span>
+
+                    </div>
+
+                    <input
+                        id="zoomSlider"
+                        type="range"
+                        min="1"
+                        max="4"
+                        value="1"
+                        step="0.1"
+                    >
+
+                </div>
+
+            </section>
+
+
+            <!-- =================================================
+                 INVESTIGATION TIMER
+            ================================================== -->
+
+            <section class="panel">
+
+                <div class="panel-header">
+
+                    <div>
+                        <h2>INVESTIGATION</h2>
+
+                        <p>
+                            Session information
+                        </p>
+                    </div>
+
+                    <div
+                        id="sessionStatus"
+                        class="session-status"
+                    >
+                        STANDBY
+                    </div>
+
+                </div>
+
+
+                <div class="session-timer">
+
+                    <div
+                        id="sessionTimer"
+                        class="timer-display"
+                    >
+                        00:00:00
+                    </div>
+
+                    <div class="timer-label">
+                        SESSION TIME
+                    </div>
+
+                </div>
+
+
+                <div class="session-controls">
+
+                    <button
+                        id="startSessionButton"
+                        class="primary-button"
+                        type="button"
+                    >
+                        START SESSION
+                    </button>
+
+                    <button
+                        id="stopSessionButton"
+                        class="secondary-button"
+                        type="button"
+                        disabled
+                    >
+                        STOP SESSION
+                    </button>
+
+                </div>
+
+            </section>
+
+
+            <!-- =================================================
+                 EVENT MARKER
+            ================================================== -->
+
+            <section class="panel">
+
+                <div class="panel-header">
+
+                    <div>
+                        <h2>EVENT MARKER</h2>
+
+                        <p>
+                            Record an observation
+                        </p>
+                    </div>
+
+                </div>
+
+
+                <button
+                    id="markEventButton"
+                    class="event-button"
+                    type="button"
+                    disabled
+                >
+                    <span class="event-icon">+</span>
+
+                    <span>
+                        MARK EVENT
+                    </span>
+                </button>
+
+
+                <div
+                    id="lastEvent"
+                    class="last-event hidden"
+                >
+
+                    <div class="last-event-title">
+                        LAST EVENT
+                    </div>
+
+                    <div
+                        id="lastEventTime"
+                        class="last-event-time"
+                    >
+                        --
+                    </div>
+
+                    <div
+                        id="lastEventDescription"
+                        class="last-event-description"
+                    >
+                        Event recorded.
+                    </div>
+
+                </div>
+
+            </section>
+
+
+            <!-- =================================================
+                 RECORDING SETTINGS
+            ================================================== -->
+
+            <section class="panel">
+
+                <div class="panel-header">
+
+                    <div>
+                        <h2>RECORDING</h2>
+
+                        <p>
+                            Evidence capture settings
+                        </p>
+                    </div>
+
+                </div>
+
+
+                <div class="setting-row">
+
+                    <div>
+                        <strong>
+                            Include timestamp
+                        </strong>
+
+                        <small>
+                            Add investigation time to captures
+                        </small>
+                    </div>
+
+                    <label class="switch">
+
+                        <input
+                            id="timestampToggle"
+                            type="checkbox"
+                            checked
+                        >
+
+                        <span class="switch-slider"></span>
+
+                    </label>
+
+                </div>
+
+
+                <div class="setting-row">
+
+                    <div>
+                        <strong>
+                            Include mode
+                        </strong>
+
+                        <small>
+                            Record the active vision mode
+                        </small>
+                    </div>
+
+                    <label class="switch">
+
+                        <input
+                            id="modeToggle"
+                            type="checkbox"
+                            checked
+                        >
+
+                        <span class="switch-slider"></span>
+
+                    </label>
+
+                </div>
+
+
+                <div class="setting-row">
+
+                    <div>
+                        <strong>
+                            Include reticle
+                        </strong>
+
+                        <small>
+                            Show targeting reticle in captures
+                        </small>
+                    </div>
+
+                    <label class="switch">
+
+                        <input
+                            id="reticleToggle"
+                            type="checkbox"
+                            checked
+                        >
+
+                        <span class="switch-slider"></span>
+
+                    </label>
+
+                </div>
+
+            </section>
+
+
+            <!-- =================================================
+                 DIAGNOSTICS
+            ================================================== -->
+
+            <section class="panel diagnostics-panel">
+
+                <div class="panel-header">
+
+                    <div>
+                        <h2>DIAGNOSTICS</h2>
+
+                        <p>
+                            Camera system information
+                        </p>
+                    </div>
+
+                </div>
+
+
+                <div class="diagnostic-row">
+
+                    <span>
+                        CAMERA
+                    </span>
+
+                    <strong id="diagnosticCamera">
+                        OFFLINE
+                    </strong>
+
+                </div>
+
+
+                <div class="diagnostic-row">
+
+                    <span>
+                        RESOLUTION
+                    </span>
+
+                    <strong id="diagnosticResolution">
+                        --
+                    </strong>
+
+                </div>
+
+
+                <div class="diagnostic-row">
+
+                    <span>
+                        FRAME RATE
+                    </span>
+
+                    <strong id="diagnosticFPS">
+                        --
+                    </strong>
+
+                </div>
+
+
+                <div class="diagnostic-row">
+
+                    <span>
+                        PROCESSING
+                    </span>
+
+                    <strong id="diagnosticProcessing">
+                        READY
+                    </strong>
+
+                </div>
+
+
+                <div class="diagnostic-row">
+
+                    <span>
+                        DEVICE
+                    </span>
+
+                    <strong id="diagnosticDevice">
+                        --
+                    </strong>
+
+                </div>
+
+            </section>
+
+
+            <!-- =================================================
+                 CAPTURE GALLERY
+            ================================================== -->
+
+            <section
+                id="galleryPanel"
+                class="panel gallery-panel"
+            >
+
+                <div class="panel-header">
+
+                    <div>
+                        <h2>SESSION CAPTURES</h2>
+
+                        <p>
+                            Photos captured during this session
+                        </p>
+                    </div>
+
+                    <span id="captureCount">
+                        0
+                    </span>
+
+                </div>
+
+
+                <div
+                    id="captureGallery"
+                    class="capture-gallery"
+                >
+
+                    <div
+                        id="emptyGallery"
+                        class="empty-gallery"
+                    >
+                        <div class="empty-gallery-icon">
+                            ◇
+                        </div>
+
+                        <p>
+                            No captures yet.
+                        </p>
+                    </div>
+
+                </div>
+
+            </section>
+
+
+            <!-- =================================================
+                 DATA EXPORT
+            ================================================== -->
+
+            <section class="panel">
+
+                <div class="panel-header">
+
+                    <div>
+                        <h2>DATA</h2>
+
+                        <p>
+                            Export investigation information
+                        </p>
+                    </div>
+
+                </div>
+
+
+                <div class="data-buttons">
+
+                    <button
+                        id="exportEventsButton"
+                        class="secondary-button"
+                        type="button"
+                    >
+                        EXPORT EVENTS
+                    </button>
+
+                    <button
+                        id="exportReportButton"
+                        class="secondary-button"
+                        type="button"
+                    >
+                        EXPORT REPORT
+                    </button>
+
+                    <button
+                        id="clearSessionButton"
+                        class="danger-button"
+                        type="button"
+                    >
+                        CLEAR SESSION
+                    </button>
+
+                </div>
+
+            </section>
+
+
+        </main>
+
+
+        <!-- =====================================================
+             FOOTER
+        ====================================================== -->
+
+        <footer class="app-footer">
+
+            <div class="footer-brand">
+                ASTRAL APPARATUS
+            </div>
+
+            <div class="footer-tagline">
+                BY INVESTIGATORS, FOR INVESTIGATORS.
+            </div>
+
+            <div class="footer-version">
+                NIGHTflux v1.0
+            </div>
+
+        </footer>
+
+    </div>
+
+
+    <!-- =========================================================
+         TOAST / NOTIFICATION
+    ========================================================== -->
+
+    <div
+        id="toast"
+        class="toast"
+        role="status"
+        aria-live="polite"
+    >
+        <span id="toastMessage">
+            Ready
+        </span>
+    </div>
+
+
+    <!-- =========================================================
+         CAMERA PERMISSION MODAL
+    ========================================================== -->
+
+    <div
+        id="permissionModal"
+        class="modal hidden"
+    >
+
+        <div class="modal-content">
+
+            <div class="modal-icon">
+                ◉
+            </div>
+
+            <h2>
+                CAMERA ACCESS
+            </h2>
+
+            <p>
+                NIGHTflux needs access to your camera to provide
+                digital low-light enhancement and investigation
+                recording.
+            </p>
+
+            <button
+                id="permissionButton"
+                class="primary-button"
+                type="button"
+            >
+                ALLOW CAMERA
+            </button>
+
+            <button
+                id="closePermissionButton"
+                class="text-button"
+                type="button"
+            >
+                CANCEL
+            </button>
+
+        </div>
+
+    </div>
+
+
+    <!-- =========================================================
+         EVENT MODAL
+    ========================================================== -->
+
+    <div
+        id="eventModal"
+        class="modal hidden"
+    >
+
+        <div class="modal-content">
+
+            <div class="modal-icon">
+                +
+            </div>
+
+            <h2>
+                MARK EVENT
+            </h2>
+
+            <p>
+                Add an optional description to this observation.
+            </p>
+
+            <textarea
+                id="eventDescription"
+                placeholder="Example: Movement near doorway..."
+                rows="4"
+            ></textarea>
+
+            <div class="modal-buttons">
+
+                <button
+                    id="saveEventButton"
+                    class="primary-button"
+                    type="button"
+                >
+                    SAVE EVENT
+                </button>
+
+                <button
+                    id="cancelEventButton"
+                    class="text-button"
+                    type="button"
+                >
+                    CANCEL
+                </button>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- =========================================================
+         PHOTO PREVIEW MODAL
+    ========================================================== -->
+
+    <div
+        id="photoModal"
+        class="modal hidden"
+    >
+
+        <div class="photo-preview-content">
+
+            <div class="photo-preview-header">
+
+                <h2>
+                    CAPTURE
+                </h2>
+
+                <button
+                    id="closePhotoButton"
+                    class="close-button"
+                    type="button"
+                    aria-label="Close"
+                >
+                    ×
+                </button>
+
+            </div>
+
+
+            <img
+                id="photoPreview"
+                src=""
+                alt="Captured NIGHTflux image"
+            >
+
+
+            <div class="photo-preview-actions">
+
+                <button
+                    id="downloadPhotoButton"
+                    class="primary-button"
+                    type="button"
+                >
+                    SAVE IMAGE
+                </button>
+
+                <button
+                    id="discardPhotoButton"
+                    class="danger-button"
+                    type="button"
+                >
+                    DISCARD
+                </button>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- =========================================================
+         JAVASCRIPT
+    ========================================================== -->
+
+    <script src="app.js"></script>
+
+</body>
+</html>
