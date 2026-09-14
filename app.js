@@ -4,12 +4,12 @@
    NIGHTflux v1
    Astral Apparatus Program
 
-   Digital low-light investigation camera
+   Camera / Low-Light Processing Engine
    ========================================================= */
 
 
 /* =========================================================
-   DOM REFERENCES
+   DOM
    ========================================================= */
 
 const cameraView = document.getElementById("cameraView");
@@ -242,7 +242,7 @@ const discardPhotoButton =
 
 
 /* =========================================================
-   APPLICATION STATE
+   STATE
    ========================================================= */
 
 const state = {
@@ -297,17 +297,17 @@ const state = {
 
     fpsStart: performance.now(),
 
-    lastFrameTime: performance.now(),
-
     facingMode: "environment",
 
-    trackCapabilities: null
+    trackCapabilities: null,
+
+    startingCamera: false
 
 };
 
 
 /* =========================================================
-   CONSTANTS
+   DEFAULTS
    ========================================================= */
 
 const DEFAULTS = {
@@ -331,14 +331,15 @@ const DEFAULTS = {
    INITIALIZATION
    ========================================================= */
 
-document.addEventListener("DOMContentLoaded", () => {
-
-    initializeApplication();
-
-});
+document.addEventListener(
+    "DOMContentLoaded",
+    initializeApplication
+);
 
 
 function initializeApplication() {
+
+    setupEventListeners();
 
     updateControlDisplays();
 
@@ -346,9 +347,9 @@ function initializeApplication() {
 
     detectDevice();
 
-    setupEventListeners();
-
     checkCameraSupport();
+
+    setVisionMode("normal");
 
 }
 
@@ -359,41 +360,51 @@ function initializeApplication() {
 
 function setupEventListeners() {
 
-    /* Camera */
+    if (startCameraButton) {
 
-    startCameraButton.addEventListener(
-        "click",
-        requestCameraAccess
-    );
+        startCameraButton.addEventListener(
+            "click",
+            requestCameraAccess
+        );
 
-    permissionButton.addEventListener(
-        "click",
-        requestCameraAccess
-    );
-
-    closePermissionButton.addEventListener(
-        "click",
-        closePermissionModal
-    );
+    }
 
 
-    /* Vision modes */
+    if (permissionButton) {
+
+        permissionButton.addEventListener(
+            "click",
+            requestCameraAccess
+        );
+
+    }
+
+
+    if (closePermissionButton) {
+
+        closePermissionButton.addEventListener(
+            "click",
+            closePermissionModal
+        );
+
+    }
+
 
     modeButtons.forEach(button => {
 
-        button.addEventListener("click", () => {
+        button.addEventListener(
+            "click",
+            () => {
 
-            const mode =
-                button.dataset.mode;
+                setVisionMode(
+                    button.dataset.mode
+                );
 
-            setVisionMode(mode);
-
-        });
+            }
+        );
 
     });
 
-
-    /* Image controls */
 
     brightnessSlider.addEventListener(
         "input",
@@ -427,8 +438,6 @@ function setupEventListeners() {
     );
 
 
-    /* Camera actions */
-
     photoButton.addEventListener(
         "click",
         capturePhoto
@@ -445,8 +454,6 @@ function setupEventListeners() {
     );
 
 
-    /* Session */
-
     startSessionButton.addEventListener(
         "click",
         startInvestigationSession
@@ -457,8 +464,6 @@ function setupEventListeners() {
         stopInvestigationSession
     );
 
-
-    /* Events */
 
     markEventButton.addEventListener(
         "click",
@@ -476,8 +481,6 @@ function setupEventListeners() {
     );
 
 
-    /* Photo */
-
     closePhotoButton.addEventListener(
         "click",
         closePhotoModal
@@ -493,8 +496,6 @@ function setupEventListeners() {
         discardCurrentPhoto
     );
 
-
-    /* Data */
 
     exportEventsButton.addEventListener(
         "click",
@@ -512,8 +513,6 @@ function setupEventListeners() {
     );
 
 
-    /* Escape key */
-
     document.addEventListener(
         "keydown",
         event => {
@@ -521,7 +520,9 @@ function setupEventListeners() {
             if (event.key === "Escape") {
 
                 closePermissionModal();
+
                 closeEventModal();
+
                 closePhotoModal();
 
             }
@@ -529,8 +530,6 @@ function setupEventListeners() {
         }
     );
 
-
-    /* Page lifecycle */
 
     document.addEventListener(
         "visibilitychange",
@@ -552,106 +551,363 @@ function setupEventListeners() {
 
 function checkCameraSupport() {
 
-    if (!navigator.mediaDevices ||
-        !navigator.mediaDevices.getUserMedia) {
+    if (
+        !window.isSecureContext
+    ) {
 
         showCameraError(
-            "Camera access is not supported by this browser."
+            "NIGHTflux requires HTTPS. Open this through GitHub Pages."
         );
 
         return false;
+
     }
 
+
+    if (
+        !navigator.mediaDevices
+    ) {
+
+        showCameraError(
+            "Camera API is unavailable in this browser."
+        );
+
+        return false;
+
+    }
+
+
+    if (
+        !navigator.mediaDevices.getUserMedia
+    ) {
+
+        showCameraError(
+            "This browser does not support camera access."
+        );
+
+        return false;
+
+    }
+
+
     return true;
+
 }
 
 
 /* =========================================================
-   CAMERA PERMISSION
+   REQUEST CAMERA
    ========================================================= */
 
 async function requestCameraAccess() {
 
-    if (!checkCameraSupport()) {
+    if (state.startingCamera) {
         return;
+    }
+
+
+    state.startingCamera = true;
+
+
+    /*
+       Give immediate visual feedback.
+    */
+
+    startCameraButton.disabled = true;
+
+    startCameraButton.textContent =
+        "STARTING CAMERA…";
+
+
+    cameraStatusText.textContent =
+        "REQUESTING CAMERA";
+
+
+    cameraStatusDot.classList.remove(
+        "offline",
+        "online"
+    );
+
+
+    diagnosticCamera.textContent =
+        "REQUESTING";
+
+
+    diagnosticProcessing.textContent =
+        "WAITING";
+
+
+    showToast(
+        "Requesting camera permission…"
+    );
+
+
+    /*
+       Check browser requirements.
+    */
+
+    if (!checkCameraSupport()) {
+
+        resetCameraStartButton();
+
+        return;
+
     }
 
 
     try {
 
-        closePermissionModal();
+        /*
+           IMPORTANT:
 
-        showToast("Requesting camera access…");
+           We request VIDEO ONLY here.
 
+           Audio/microphone will be added later when
+           NIGHTflux's audio system is implemented.
 
-        const constraints = {
+           Keeping camera permission separate makes the
+           initial iPhone setup much more reliable.
+        */
 
-            audio: true,
-
-            video: {
-
-                facingMode: {
-                    ideal: "environment"
-                },
-
-                width: {
-                    ideal: 1920
-                },
-
-                height: {
-                    ideal: 1080
-                },
-
-                frameRate: {
-                    ideal: 30,
-                    max: 60
-                }
-
-            }
-
-        };
+        let stream;
 
 
-        const stream =
-            await navigator.mediaDevices.getUserMedia(
-                constraints
+        try {
+
+            stream =
+                await navigator.mediaDevices.getUserMedia({
+
+                    video: {
+
+                        facingMode: {
+                            ideal: "environment"
+                        },
+
+                        width: {
+                            ideal: 1920
+                        },
+
+                        height: {
+                            ideal: 1080
+                        },
+
+                        frameRate: {
+                            ideal: 30
+                        }
+
+                    },
+
+                    audio: false
+
+                });
+
+        } catch (firstError) {
+
+            console.warn(
+                "Preferred camera request failed:",
+                firstError
             );
 
 
-        state.stream = stream;
+            /*
+               Second attempt:
 
-        state.cameraReady = true;
+               Extremely simple camera request.
+
+               This helps with browsers that reject
+               detailed constraints.
+            */
+
+            stream =
+                await navigator.mediaDevices.getUserMedia({
+
+                    video: true,
+
+                    audio: false
+
+                });
+
+        }
 
 
-        cameraView.srcObject = stream;
+        if (!stream) {
+
+            throw new Error(
+                "Camera returned no stream."
+            );
+
+        }
 
 
-        await cameraView.play();
+        state.stream =
+            stream;
+
+
+        state.cameraReady =
+            true;
+
+
+        /*
+           Connect stream to video element.
+        */
+
+        cameraView.srcObject =
+            stream;
+
+
+        /*
+           Safari/iOS sometimes benefits from explicitly
+           calling load before play.
+        */
+
+        cameraView.load();
+
+
+        try {
+
+            await cameraView.play();
+
+        } catch (playError) {
+
+            console.warn(
+                "Video play warning:",
+                playError
+            );
+
+        }
+
+
+        /*
+           Verify that video dimensions actually exist.
+        */
+
+        await waitForVideoReady();
 
 
         configureCameraTrack();
 
+
         showCameraUI();
+
 
         startProcessing();
 
+
         updateDiagnostics();
 
-        showToast("Camera online");
+
+        showToast(
+            "NIGHTflux camera online"
+        );
 
 
     } catch (error) {
 
         console.error(
-            "Camera initialization error:",
+            "NIGHTflux camera error:",
             error
         );
 
-        state.cameraReady = false;
 
-        handleCameraError(error);
+        state.cameraReady =
+            false;
+
+
+        handleCameraError(
+            error
+        );
+
+    } finally {
+
+        state.startingCamera =
+            false;
+
+
+        resetCameraStartButton();
 
     }
+
+}
+
+
+/* =========================================================
+   WAIT FOR VIDEO
+   ========================================================= */
+
+function waitForVideoReady() {
+
+    return new Promise(
+        resolve => {
+
+            if (
+                cameraView.videoWidth > 0 &&
+                cameraView.videoHeight > 0
+            ) {
+
+                resolve();
+
+                return;
+
+            }
+
+
+            let finished =
+                false;
+
+
+            const finish = () => {
+
+                if (finished) {
+                    return;
+                }
+
+
+                finished = true;
+
+
+                cameraView.removeEventListener(
+                    "loadedmetadata",
+                    finish
+                );
+
+
+                cameraView.removeEventListener(
+                    "canplay",
+                    finish
+                );
+
+
+                resolve();
+
+            };
+
+
+            cameraView.addEventListener(
+                "loadedmetadata",
+                finish
+            );
+
+
+            cameraView.addEventListener(
+                "canplay",
+                finish
+            );
+
+
+            /*
+               Safety timeout.
+
+               Don't let NIGHTflux hang forever if Safari
+               doesn't fire the expected event.
+            */
+
+            setTimeout(
+                finish,
+                3000
+            );
+
+        }
+    );
 
 }
 
@@ -676,7 +932,8 @@ function configureCameraTrack() {
     }
 
 
-    const track = tracks[0];
+    const track =
+        tracks[0];
 
 
     try {
@@ -686,56 +943,46 @@ function configureCameraTrack() {
 
     } catch {
 
-        state.trackCapabilities = null;
+        state.trackCapabilities =
+            null;
 
     }
 
 
     /*
-       If the physical camera supports optical/digital
-       zoom through MediaTrackCapabilities, use it.
+       Hardware zoom.
     */
 
     if (
         state.trackCapabilities &&
-        typeof state.trackCapabilities.zoom === "object"
+        state.trackCapabilities.zoom
     ) {
 
-        const zoomCapabilities =
+        const zoom =
             state.trackCapabilities.zoom;
 
 
         if (
-            Number.isFinite(zoomCapabilities.min) &&
-            Number.isFinite(zoomCapabilities.max)
+            Number.isFinite(zoom.min) &&
+            Number.isFinite(zoom.max)
         ) {
-
-            /*
-               Keep the UI at a maximum of 4x even if
-               the hardware advertises a larger range.
-            */
-
-            const maxZoom =
-                Math.min(
-                    4,
-                    zoomCapabilities.max
-                );
-
 
             zoomSlider.min =
                 String(
                     Math.max(
                         1,
-                        zoomCapabilities.min
+                        zoom.min
                     )
                 );
 
 
             zoomSlider.max =
-                String(maxZoom);
-
-
-            zoomSlider.step = "0.1";
+                String(
+                    Math.min(
+                        4,
+                        zoom.max
+                    )
+                );
 
         }
 
@@ -743,7 +990,7 @@ function configureCameraTrack() {
 
 
     /*
-       Try to enable continuous autofocus if supported.
+       Autofocus.
     */
 
     try {
@@ -756,26 +1003,32 @@ function configureCameraTrack() {
         ) {
 
             if (
-                state.trackCapabilities.focusMode
-                    .includes("continuous")
+                state.trackCapabilities.focusMode.includes(
+                    "continuous"
+                )
             ) {
 
                 track.applyConstraints({
 
                     advanced: [
                         {
-                            focusMode: "continuous"
+                            focusMode:
+                                "continuous"
                         }
                     ]
 
-                }).catch(() => {});
+                }).catch(
+                    () => {}
+                );
 
             }
 
         }
 
     } catch {
-        /* Ignore unsupported focus controls */
+
+        /* Unsupported camera feature */
+
     }
 
 }
@@ -787,33 +1040,178 @@ function configureCameraTrack() {
 
 function showCameraUI() {
 
-    cameraMessage.classList.add("hidden");
+    cameraMessage.classList.add(
+        "hidden"
+    );
 
-    cameraStatusDot.classList.remove("offline");
 
-    cameraStatusDot.classList.add("online");
+    cameraStatusDot.classList.remove(
+        "offline"
+    );
+
+    cameraStatusDot.classList.add(
+        "online"
+    );
+
 
     cameraStatusText.textContent =
         "CAMERA ONLINE";
 
 
-    photoButton.disabled = false;
+    diagnosticCamera.textContent =
+        "ONLINE";
 
-    videoButton.disabled = false;
 
-    markEventButton.disabled = false;
+    photoButton.disabled =
+        false;
+
+    videoButton.disabled =
+        false;
+
+    markEventButton.disabled =
+        false;
+
+}
+
+
+function resetCameraStartButton() {
+
+    startCameraButton.disabled =
+        false;
+
+    startCameraButton.textContent =
+        "START CAMERA";
+
+}
+
+
+/* =========================================================
+   CAMERA ERRORS
+   ========================================================= */
+
+function handleCameraError(error) {
+
+    state.cameraReady =
+        false;
+
+
+    let message =
+        "Unable to access the camera.";
+
+
+    switch (error.name) {
+
+        case "NotAllowedError":
+
+            message =
+                "Camera permission was denied. On iPhone, check Settings → Safari → Camera.";
+
+            break;
+
+
+        case "PermissionDeniedError":
+
+            message =
+                "Camera permission was denied.";
+
+            break;
+
+
+        case "NotFoundError":
+
+            message =
+                "No camera was found.";
+
+            break;
+
+
+        case "DevicesNotFoundError":
+
+            message =
+                "No camera device was found.";
+
+            break;
+
+
+        case "NotReadableError":
+
+            message =
+                "The camera is being used by another application.";
+
+            break;
+
+
+        case "TrackStartError":
+
+            message =
+                "The camera could not be started.";
+
+            break;
+
+
+        case "OverconstrainedError":
+
+            message =
+                "The requested camera settings were unavailable.";
+
+            break;
+
+
+        case "SecurityError":
+
+            message =
+                "Camera access was blocked by browser security.";
+
+            break;
+
+
+        case "AbortError":
+
+            message =
+                "Camera startup was interrupted.";
+
+            break;
+
+
+        default:
+
+            if (
+                error &&
+                error.message
+            ) {
+
+                message =
+                    `Camera error: ${error.message}`;
+
+            }
+
+            break;
+
+    }
+
+
+    showCameraError(
+        message
+    );
 
 }
 
 
 function showCameraError(message) {
 
-    cameraStatusDot.classList.remove("online");
+    cameraStatusDot.classList.remove(
+        "online",
+        "recording"
+    );
 
-    cameraStatusDot.classList.add("offline");
+
+    cameraStatusDot.classList.add(
+        "offline"
+    );
+
 
     cameraStatusText.textContent =
-        "CAMERA ERROR";
+        "CAMERA OFFLINE";
 
 
     diagnosticCamera.textContent =
@@ -824,51 +1222,37 @@ function showCameraError(message) {
         "OFFLINE";
 
 
-    showToast(message);
+    /*
+       Put the error directly into the camera area
+       so the user can actually see what happened.
+    */
 
-}
-
-
-/* =========================================================
-   CAMERA ERROR HANDLING
-   ========================================================= */
-
-function handleCameraError(error) {
-
-    let message =
-        "Unable to access camera.";
+    cameraMessage.classList.remove(
+        "hidden"
+    );
 
 
-    if (error.name === "NotAllowedError") {
+    const paragraph =
+        cameraMessage.querySelector("p");
 
-        message =
-            "Camera permission was denied. Check your browser settings.";
 
-    } else if (error.name === "NotFoundError") {
+    if (paragraph) {
 
-        message =
-            "No camera was found on this device.";
-
-    } else if (error.name === "NotReadableError") {
-
-        message =
-            "The camera is currently being used by another application.";
-
-    } else if (error.name === "SecurityError") {
-
-        message =
-            "Camera access requires a secure HTTPS connection.";
+        paragraph.textContent =
+            message;
 
     }
 
 
-    showCameraError(message);
+    showToast(
+        message
+    );
 
 }
 
 
 /* =========================================================
-   PROCESSING ENGINE
+   PROCESSING
    ========================================================= */
 
 function startProcessing() {
@@ -878,25 +1262,24 @@ function startProcessing() {
     }
 
 
-    state.processing = true;
-
-    diagnosticProcessing.textContent =
-        "ACTIVE";
+    state.processing =
+        true;
 
 
     processingCanvas.style.display =
         "block";
 
 
-    state.lastFrameTime =
-        performance.now();
+    diagnosticProcessing.textContent =
+        "ACTIVE";
+
+
+    state.frameCounter =
+        0;
 
 
     state.fpsStart =
         performance.now();
-
-
-    state.frameCounter = 0;
 
 
     processFrame();
@@ -906,7 +1289,8 @@ function startProcessing() {
 
 function stopProcessing() {
 
-    state.processing = false;
+    state.processing =
+        false;
 
 
     if (state.animationFrame) {
@@ -915,7 +1299,8 @@ function stopProcessing() {
             state.animationFrame
         );
 
-        state.animationFrame = null;
+        state.animationFrame =
+            null;
 
     }
 
@@ -931,7 +1316,7 @@ function stopProcessing() {
 
 
 /* =========================================================
-   MAIN FRAME PROCESSOR
+   FRAME PROCESSING
    ========================================================= */
 
 function processFrame() {
@@ -946,43 +1331,31 @@ function processFrame() {
         HTMLMediaElement.HAVE_CURRENT_DATA
     ) {
 
-        const videoWidth =
+        const width =
             cameraView.videoWidth;
 
-        const videoHeight =
+        const height =
             cameraView.videoHeight;
 
 
         if (
-            videoWidth > 0 &&
-            videoHeight > 0
+            width > 0 &&
+            height > 0
         ) {
 
             prepareCanvas(
-                videoWidth,
-                videoHeight
+                width,
+                height
             );
 
 
-            /*
-               Draw the source frame.
-            */
-
             drawVideoFrame();
-
-
-            /*
-               Apply the selected image processing.
-            */
 
             applyImageProcessing();
 
-
-            /*
-               Apply optional sharpening.
-            */
-
-            if (state.sharpness > 0) {
+            if (
+                state.sharpness > 0
+            ) {
 
                 applySharpness(
                     state.sharpness
@@ -990,17 +1363,6 @@ function processFrame() {
 
             }
 
-
-            /*
-               Draw investigation overlay.
-            */
-
-            drawProcessingOverlay();
-
-
-            /*
-               Update FPS information.
-            */
 
             updateFPS();
 
@@ -1018,7 +1380,7 @@ function processFrame() {
 
 
 /* =========================================================
-   CANVAS PREPARATION
+   CANVAS
    ========================================================= */
 
 function prepareCanvas(
@@ -1050,7 +1412,7 @@ function prepareCanvas(
 
 
 /* =========================================================
-   DRAW VIDEO FRAME
+   DRAW CAMERA
    ========================================================= */
 
 function drawVideoFrame() {
@@ -1061,11 +1423,6 @@ function drawVideoFrame() {
     const height =
         processingCanvas.height;
 
-
-    /*
-       Apply digital zoom by cropping the center of
-       the camera image.
-    */
 
     const zoom =
         Math.max(
@@ -1145,15 +1502,10 @@ function applyImageProcessing() {
         state.currentMode;
 
 
-    /*
-       Precalculate gamma table.
-
-       This is considerably faster than calling Math.pow()
-       for every RGB channel on every frame.
-    */
-
     const gammaTable =
-        createGammaTable(gamma);
+        createGammaTable(
+            gamma
+        );
 
 
     for (
@@ -1172,32 +1524,31 @@ function applyImageProcessing() {
             pixels[i + 2];
 
 
-        /* -----------------------------------------------
-           BRIGHTNESS
-        ------------------------------------------------ */
+        /*
+           Brightness.
+        */
 
         r += brightness;
         g += brightness;
         b += brightness;
 
 
-        /* -----------------------------------------------
-           CONTRAST
-        ------------------------------------------------ */
+        /*
+           Contrast.
+        */
 
         r =
-            ((r - 128) * contrast) + 128;
+            ((r - 128) * contrast) +
+            128;
 
         g =
-            ((g - 128) * contrast) + 128;
+            ((g - 128) * contrast) +
+            128;
 
         b =
-            ((b - 128) * contrast) + 128;
+            ((b - 128) * contrast) +
+            128;
 
-
-        /* -----------------------------------------------
-           CLAMP
-        ------------------------------------------------ */
 
         r =
             clampByte(r);
@@ -1209,9 +1560,9 @@ function applyImageProcessing() {
             clampByte(b);
 
 
-        /* -----------------------------------------------
-           GAMMA
-        ------------------------------------------------ */
+        /*
+           Gamma.
+        */
 
         r =
             gammaTable[r];
@@ -1223,11 +1574,13 @@ function applyImageProcessing() {
             gammaTable[b];
 
 
-        /* -----------------------------------------------
-           VISION MODE
-        ------------------------------------------------ */
+        /*
+           Vision modes.
+        */
 
-        if (mode === "green") {
+        if (
+            mode === "green"
+        ) {
 
             const luminance =
                 calculateLuminance(
@@ -1236,13 +1589,6 @@ function applyImageProcessing() {
                     b
                 );
 
-
-            /*
-               Green phosphor style.
-
-               Dark pixels remain nearly black while
-               brighter pixels become progressively brighter.
-            */
 
             r =
                 luminance * 0.08;
@@ -1254,7 +1600,9 @@ function applyImageProcessing() {
                 luminance * 0.12;
 
 
-        } else if (mode === "whitehot") {
+        } else if (
+            mode === "whitehot"
+        ) {
 
             const luminance =
                 calculateLuminance(
@@ -1274,7 +1622,9 @@ function applyImageProcessing() {
                 luminance;
 
 
-        } else if (mode === "negative") {
+        } else if (
+            mode === "negative"
+        ) {
 
             r =
                 255 - r;
@@ -1286,19 +1636,9 @@ function applyImageProcessing() {
                 255 - b;
 
 
-        } else if (mode === "edge") {
-
-            /*
-               Edge detection is handled in a second pass.
-               We leave the source pixels here.
-            */
-
-
-        } else if (mode === "lowlight") {
-
-            /*
-               Stronger shadow lift for very dark scenes.
-            */
+        } else if (
+            mode === "lowlight"
+        ) {
 
             const luminance =
                 calculateLuminance(
@@ -1345,11 +1685,9 @@ function applyImageProcessing() {
     );
 
 
-    /*
-       Edge mode gets a dedicated processing pass.
-    */
-
-    if (mode === "edge") {
+    if (
+        mode === "edge"
+    ) {
 
         applyEdgeDetection();
 
@@ -1359,13 +1697,17 @@ function applyImageProcessing() {
 
 
 /* =========================================================
-   GAMMA TABLE
+   GAMMA
    ========================================================= */
 
-function createGammaTable(gamma) {
+function createGammaTable(
+    gamma
+) {
 
     const table =
-        new Uint8ClampedArray(256);
+        new Uint8ClampedArray(
+            256
+        );
 
 
     for (
@@ -1434,18 +1776,12 @@ function applyEdgeDetection() {
         output.data;
 
 
-    /*
-       Simple Sobel edge detector.
-
-       This is intentionally lightweight so it can run
-       on mobile hardware without becoming unusably slow.
-    */
-
     const getGray =
         (x, y) => {
 
             const index =
                 ((y * width) + x) * 4;
+
 
             return (
                 0.299 * src[index] +
@@ -1469,24 +1805,67 @@ function applyEdgeDetection() {
         ) {
 
             const gx =
-                -getGray(x - 1, y - 1) +
-                getGray(x + 1, y - 1) +
+                -getGray(
+                    x - 1,
+                    y - 1
+                ) +
 
-                -2 * getGray(x - 1, y) +
-                2 * getGray(x + 1, y) +
+                getGray(
+                    x + 1,
+                    y - 1
+                ) +
 
-                -getGray(x - 1, y + 1) +
-                getGray(x + 1, y + 1);
+                -2 * getGray(
+                    x - 1,
+                    y
+                ) +
+
+                2 * getGray(
+                    x + 1,
+                    y
+                ) +
+
+                -getGray(
+                    x - 1,
+                    y + 1
+                ) +
+
+                getGray(
+                    x + 1,
+                    y + 1
+                );
 
 
             const gy =
-                -getGray(x - 1, y - 1) -
-                2 * getGray(x, y - 1) -
-                getGray(x + 1, y - 1) +
+                -getGray(
+                    x - 1,
+                    y - 1
+                ) -
 
-                getGray(x - 1, y + 1) +
-                2 * getGray(x, y + 1) +
-                getGray(x + 1, y + 1);
+                2 * getGray(
+                    x,
+                    y - 1
+                ) -
+
+                getGray(
+                    x + 1,
+                    y - 1
+                ) +
+
+                getGray(
+                    x - 1,
+                    y + 1
+                ) +
+
+                2 * getGray(
+                    x,
+                    y + 1
+                ) +
+
+                getGray(
+                    x + 1,
+                    y + 1
+                );
 
 
             const magnitude =
@@ -1536,20 +1915,14 @@ function applyEdgeDetection() {
    SHARPNESS
    ========================================================= */
 
-function applySharpness(amount) {
+function applySharpness(
+    amount
+) {
 
     if (amount <= 0) {
         return;
     }
 
-
-    /*
-       Keep sharpening lightweight.
-
-       The effect uses the canvas filter where available.
-       Because the live feed is already being processed,
-       aggressive convolution would be expensive on an iPhone.
-    */
 
     const width =
         processingCanvas.width;
@@ -1572,7 +1945,9 @@ function applySharpness(amount) {
 
 
     const copy =
-        new Uint8ClampedArray(source);
+        new Uint8ClampedArray(
+            source
+        );
 
 
     const strength =
@@ -1602,13 +1977,16 @@ function applySharpness(amount) {
             ) {
 
                 const center =
-                    copy[index + channel];
+                    copy[
+                        index +
+                        channel
+                    ];
 
 
                 const top =
                     copy[
                         index -
-                        (width * 4) +
+                        width * 4 +
                         channel
                     ];
 
@@ -1616,7 +1994,7 @@ function applySharpness(amount) {
                 const bottom =
                     copy[
                         index +
-                        (width * 4) +
+                        width * 4 +
                         channel
                     ];
 
@@ -1637,7 +2015,7 @@ function applySharpness(amount) {
                     ];
 
 
-                const blur =
+                const average =
                     (
                         top +
                         bottom +
@@ -1646,17 +2024,17 @@ function applySharpness(amount) {
                     ) / 4;
 
 
-                const sharpened =
-                    center +
-                    (
-                        (center - blur) *
-                        strength
-                    );
-
-
-                source[index + channel] =
+                source[
+                    index +
+                    channel
+                ] =
                     clampByte(
-                        sharpened
+                        center +
+                        (
+                            center -
+                            average
+                        ) *
+                        strength
                     );
 
             }
@@ -1671,25 +2049,6 @@ function applySharpness(amount) {
         0,
         0
     );
-
-}
-
-
-/* =========================================================
-   OVERLAY
-   ========================================================= */
-
-function drawProcessingOverlay() {
-
-    /*
-       The HTML overlay sits over the camera canvas,
-       so there is nothing to draw here for the normal
-       interface.
-
-       This function is intentionally retained because
-       future capture rendering will use the same overlay
-       state.
-    */
 
 }
 
@@ -1712,7 +2071,9 @@ function updateFPS() {
         state.fpsStart;
 
 
-    if (elapsed >= 1000) {
+    if (
+        elapsed >= 1000
+    ) {
 
         state.fps =
             Math.round(
@@ -1723,7 +2084,9 @@ function updateFPS() {
             );
 
 
-        state.frameCounter = 0;
+        state.frameCounter =
+            0;
+
 
         state.fpsStart =
             now;
@@ -1741,20 +2104,29 @@ function updateFPS() {
    VISION MODE
    ========================================================= */
 
-function setVisionMode(mode) {
+function setVisionMode(
+    mode
+) {
 
     const validModes = [
+
         "normal",
         "green",
         "whitehot",
         "negative",
         "edge",
         "lowlight"
+
     ];
 
 
-    if (!validModes.includes(mode)) {
-        return;
+    if (
+        !validModes.includes(mode)
+    ) {
+
+        mode =
+            "normal";
+
     }
 
 
@@ -1762,57 +2134,30 @@ function setVisionMode(mode) {
         mode;
 
 
-    modeButtons.forEach(button => {
+    modeButtons.forEach(
+        button => {
 
-        button.classList.toggle(
-            "active",
-            button.dataset.mode === mode
-        );
+            button.classList.toggle(
+                "active",
+                button.dataset.mode === mode
+            );
 
-    });
+        }
+    );
 
 
     const displayName =
-        getModeDisplayName(mode);
+        getModeDisplayName(
+            mode
+        );
 
 
     currentMode.textContent =
         displayName;
 
+
     overlayMode.textContent =
         displayName;
-
-
-    showToast(
-        `Vision mode: ${displayName}`
-    );
-
-}
-
-
-function getModeDisplayName(mode) {
-
-    const names = {
-
-        normal: "NORMAL",
-
-        green: "GREEN",
-
-        whitehot: "WHITE HOT",
-
-        negative: "NEGATIVE",
-
-        edge: "EDGE",
-
-        lowlight: "LOW LIGHT"
-
-    };
-
-
-    return (
-        names[mode] ||
-        "NORMAL"
-    );
 
 }
 
@@ -1863,7 +2208,9 @@ function updateControlDisplays() {
 
 
     gammaValue.textContent =
-        Number(state.gamma).toFixed(1);
+        Number(
+            state.gamma
+        ).toFixed(1);
 
 
     sharpnessValue.textContent =
@@ -1871,7 +2218,9 @@ function updateControlDisplays() {
 
 
     zoomValue.textContent =
-        `${Number(state.zoom).toFixed(1)}×`;
+        `${Number(
+            state.zoom
+        ).toFixed(1)}×`;
 
 }
 
@@ -1940,61 +2289,54 @@ async function updateZoom() {
     updateControlDisplays();
 
 
-    /*
-       If the physical camera provides hardware zoom,
-       use it in addition to the canvas zoom when possible.
-
-       Canvas zoom remains the fallback.
-    */
-
     if (
-        state.stream &&
-        state.trackCapabilities &&
-        state.trackCapabilities.zoom
+        !state.stream ||
+        !state.trackCapabilities ||
+        !state.trackCapabilities.zoom
     ) {
 
-        const track =
-            state.stream.getVideoTracks()[0];
+        return;
+
+    }
 
 
-        if (!track) {
-            return;
-        }
+    const track =
+        state.stream.getVideoTracks()[0];
 
 
-        const capability =
-            state.trackCapabilities.zoom;
+    if (!track) {
+        return;
+    }
 
 
-        const physicalZoom =
-            clamp(
-                state.zoom,
-                capability.min,
-                capability.max
-            );
+    const capability =
+        state.trackCapabilities.zoom;
 
 
-        try {
+    const physicalZoom =
+        clamp(
+            state.zoom,
+            capability.min,
+            capability.max
+        );
 
-            await track.applyConstraints({
 
-                advanced: [
-                    {
-                        zoom: physicalZoom
-                    }
-                ]
+    try {
 
-            });
+        await track.applyConstraints({
 
-        } catch {
+            advanced: [
+                {
+                    zoom:
+                        physicalZoom
+                }
+            ]
 
-            /*
-               Ignore hardware zoom failures.
+        });
 
-               Canvas zoom will continue to work.
-            */
+    } catch {
 
-        }
+        /* Canvas zoom remains active */
 
     }
 
@@ -2002,7 +2344,7 @@ async function updateZoom() {
 
 
 /* =========================================================
-   PHOTO CAPTURE
+   PHOTO
    ========================================================= */
 
 function capturePhoto() {
@@ -2010,21 +2352,7 @@ function capturePhoto() {
     if (!state.cameraReady) {
 
         showToast(
-            "Start the camera first"
-        );
-
-        return;
-
-    }
-
-
-    if (
-        processingCanvas.width === 0 ||
-        processingCanvas.height === 0
-    ) {
-
-        showToast(
-            "Camera frame is not ready"
+            "Camera is not active"
         );
 
         return;
@@ -2037,6 +2365,20 @@ function capturePhoto() {
 
     const height =
         processingCanvas.height;
+
+
+    if (
+        width <= 0 ||
+        height <= 0
+    ) {
+
+        showToast(
+            "Camera frame is not ready"
+        );
+
+        return;
+
+    }
 
 
     captureCanvas.width =
@@ -2054,10 +2396,6 @@ function capturePhoto() {
     );
 
 
-    /*
-       Copy the already-processed live frame.
-    */
-
     captureContext.drawImage(
         processingCanvas,
         0,
@@ -2066,10 +2404,6 @@ function capturePhoto() {
         height
     );
 
-
-    /*
-       Add optional investigation metadata.
-    */
 
     drawCaptureMetadata(
         captureContext,
@@ -2133,7 +2467,7 @@ function capturePhoto() {
 
 
 /* =========================================================
-   CAPTURE METADATA
+   PHOTO METADATA
    ========================================================= */
 
 function drawCaptureMetadata(
@@ -2141,11 +2475,6 @@ function drawCaptureMetadata(
     width,
     height
 ) {
-
-    /*
-       Metadata is deliberately subtle so it doesn't
-       obscure evidence.
-    */
 
     if (
         timestampToggle.checked
@@ -2161,13 +2490,13 @@ function drawCaptureMetadata(
 
 
         context.fillStyle =
-            "rgba(0, 0, 0, 0.65)";
+            "rgba(0,0,0,0.65)";
 
 
         context.fillRect(
             10,
             height - 38,
-            170,
+            175,
             26
         );
 
@@ -2200,7 +2529,7 @@ function drawCaptureMetadata(
 
 
         context.fillStyle =
-            "rgba(0, 0, 0, 0.65)";
+            "rgba(0,0,0,0.65)";
 
 
         context.fillRect(
@@ -2236,18 +2565,6 @@ function drawCaptureMetadata(
 
     }
 
-
-    if (
-        !reticleToggle.checked
-    ) {
-
-        /*
-           The reticle exists only in the HTML overlay,
-           so there is nothing to remove from the canvas.
-        */
-
-    }
-
 }
 
 
@@ -2257,19 +2574,15 @@ function drawCaptureMetadata(
 
 function updateGallery() {
 
-    /*
-       Remove old generated gallery items.
-    */
-
     const existing =
         captureGallery.querySelectorAll(
             ".gallery-item"
         );
 
 
-    existing.forEach(item => {
-        item.remove();
-    });
+    existing.forEach(
+        item => item.remove()
+    );
 
 
     if (
@@ -2312,6 +2625,7 @@ function updateGallery() {
             image.src =
                 capture.dataURL;
 
+
             image.alt =
                 "NIGHTflux capture";
 
@@ -2332,9 +2646,14 @@ function updateGallery() {
                 );
 
 
-            item.appendChild(image);
+            item.appendChild(
+                image
+            );
 
-            item.appendChild(time);
+
+            item.appendChild(
+                time
+            );
 
 
             item.addEventListener(
@@ -2344,8 +2663,10 @@ function updateGallery() {
                     state.pendingPhotoData =
                         capture;
 
+
                     photoPreview.src =
                         capture.dataURL;
+
 
                     photoModal.classList.remove(
                         "hidden"
@@ -2480,7 +2801,7 @@ function closePhotoModal() {
 
 
 /* =========================================================
-   VIDEO RECORDING
+   VIDEO
    ========================================================= */
 
 function toggleVideoRecording() {
@@ -2497,10 +2818,6 @@ function toggleVideoRecording() {
 
 }
 
-
-/* =========================================================
-   START RECORDING
-   ========================================================= */
 
 function startVideoRecording() {
 
@@ -2521,18 +2838,13 @@ function startVideoRecording() {
     ) {
 
         showToast(
-            "Video recording is not supported by this browser."
+            "Video recording is not supported."
         );
 
         return;
 
     }
 
-
-    /*
-       Prefer formats commonly supported by Safari/iOS,
-       then fall back through alternatives.
-    */
 
     const mimeTypes = [
 
@@ -2573,19 +2885,15 @@ function startVideoRecording() {
 
     try {
 
-        const options =
-            selectedMime
-                ? {
-                    mimeType:
-                        selectedMime
-                }
-                : undefined;
-
-
         state.mediaRecorder =
             new MediaRecorder(
                 state.stream,
-                options
+                selectedMime
+                    ? {
+                        mimeType:
+                            selectedMime
+                    }
+                    : undefined
             );
 
 
@@ -2623,10 +2931,8 @@ function startVideoRecording() {
             event => {
 
                 console.error(
-                    "MediaRecorder error:",
                     event
                 );
-
 
                 showToast(
                     "Recording error"
@@ -2666,9 +2972,11 @@ function startVideoRecording() {
             "online"
         );
 
+
         cameraStatusDot.classList.add(
             "recording"
         );
+
 
         cameraStatusText.textContent =
             "RECORDING";
@@ -2681,7 +2989,6 @@ function startVideoRecording() {
     } catch (error) {
 
         console.error(
-            "Recording initialization error:",
             error
         );
 
@@ -2694,10 +3001,6 @@ function startVideoRecording() {
 
 }
 
-
-/* =========================================================
-   STOP RECORDING
-   ========================================================= */
 
 function stopVideoRecording() {
 
@@ -2754,10 +3057,6 @@ function stopVideoRecording() {
 }
 
 
-/* =========================================================
-   FINISH RECORDING
-   ========================================================= */
-
 function finishVideoRecording() {
 
     if (
@@ -2790,8 +3089,9 @@ function finishVideoRecording() {
 
 
     const extension =
-        state.recordingMimeType
-            .includes("mp4")
+        state.recordingMimeType.includes(
+            "mp4"
+        )
             ? "mp4"
             : "webm";
 
@@ -2825,7 +3125,9 @@ function finishVideoRecording() {
 
     setTimeout(
         () => {
-            URL.revokeObjectURL(url);
+            URL.revokeObjectURL(
+                url
+            );
         },
         2000
     );
@@ -2847,7 +3149,7 @@ function finishVideoRecording() {
 
 
 /* =========================================================
-   INVESTIGATION SESSION
+   SESSION
    ========================================================= */
 
 function startInvestigationSession() {
@@ -2978,7 +3280,7 @@ function updateSessionTimer() {
 
 
 /* =========================================================
-   EVENT MARKING
+   EVENTS
    ========================================================= */
 
 function openEventModal() {
@@ -3095,7 +3397,7 @@ function saveEvent() {
 
 
 /* =========================================================
-   DATA EXPORT
+   EXPORT EVENTS
    ========================================================= */
 
 function exportEvents() {
@@ -3195,24 +3497,28 @@ function exportEvents() {
 
 
 /* =========================================================
-   REPORT EXPORT
+   REPORT
    ========================================================= */
 
 function exportReport() {
 
     const report = [];
 
+
     report.push(
         "NIGHTflux Investigation Report"
     );
+
 
     report.push(
         "Astral Apparatus Program"
     );
 
+
     report.push(
         "================================"
     );
+
 
     report.push("");
 
@@ -3230,6 +3536,7 @@ function exportReport() {
     report.push(
         "SESSION"
     );
+
 
     report.push(
         `Status: ${
@@ -3262,8 +3569,9 @@ function exportReport() {
 
 
     report.push(
-        "CURRENT CAMERA SETTINGS"
+        "CAMERA SETTINGS"
     );
+
 
     report.push(
         `Vision Mode: ${
@@ -3273,11 +3581,13 @@ function exportReport() {
         }`
     );
 
+
     report.push(
         `Brightness: ${
             state.brightness
         }`
     );
+
 
     report.push(
         `Contrast: ${
@@ -3285,17 +3595,20 @@ function exportReport() {
         }%`
     );
 
+
     report.push(
         `Gamma: ${
             state.gamma
         }`
     );
 
+
     report.push(
         `Sharpness: ${
             state.sharpness
         }`
     );
+
 
     report.push(
         `Digital Zoom: ${
@@ -3308,25 +3621,14 @@ function exportReport() {
 
 
     report.push(
-        "CAPTURES"
-    );
-
-    report.push(
         `Photos: ${
             state.captures.length
         }`
     );
 
 
-    report.push("");
-
-
     report.push(
-        "EVENTS"
-    );
-
-    report.push(
-        `Marked Events: ${
+        `Events: ${
             state.events.length
         }`
     );
@@ -3335,62 +3637,57 @@ function exportReport() {
     report.push("");
 
 
-    if (
-        state.events.length > 0
-    ) {
+    state.events.forEach(
+        (event, index) => {
 
-        state.events.forEach(
-            (event, index) => {
+            report.push(
+                `EVENT ${index + 1}`
+            );
 
-                report.push(
-                    `EVENT ${index + 1}`
-                );
 
-                report.push(
-                    `Time: ${formatDateTime(
-                        event.timestamp
-                    )}`
-                );
+            report.push(
+                `Time: ${formatDateTime(
+                    event.timestamp
+                )}`
+            );
 
-                report.push(
-                    `Session Time: ${formatDuration(
-                        event.elapsed
-                    )}`
-                );
 
-                report.push(
-                    `Mode: ${getModeDisplayName(
-                        event.mode
-                    )}`
-                );
+            report.push(
+                `Session Time: ${formatDuration(
+                    event.elapsed
+                )}`
+            );
 
-                report.push(
-                    `Description: ${
-                        event.description
-                    }`
-                );
 
-                report.push("");
+            report.push(
+                `Mode: ${getModeDisplayName(
+                    event.mode
+                )}`
+            );
 
-            }
-        );
 
-    } else {
+            report.push(
+                `Description: ${
+                    event.description
+                }`
+            );
 
-        report.push(
-            "No events recorded."
-        );
 
-    }
+            report.push("");
+
+        }
+    );
 
 
     report.push(
         "================================"
     );
 
+
     report.push(
-        "NIGHTflux v1"
+        "NIGHTflux v1.0"
     );
+
 
     report.push(
         "Astral Apparatus"
@@ -3414,19 +3711,19 @@ function exportReport() {
 
 
 /* =========================================================
-   CLEAR SESSION
+   CLEAR
    ========================================================= */
 
 function clearSession() {
 
-    const confirmed =
-        window.confirm(
+    if (
+        !window.confirm(
             "Clear all NIGHTflux session events and captures?"
-        );
+        )
+    ) {
 
-
-    if (!confirmed) {
         return;
+
     }
 
 
@@ -3435,7 +3732,6 @@ function clearSession() {
 
     state.captures =
         [];
-
 
     state.pendingPhotoData =
         null;
@@ -3495,10 +3791,6 @@ async function toggleFullscreen() {
 
         } else {
 
-            /*
-               iOS Safari fallback.
-            */
-
             document.body.classList.add(
                 "fullscreen-camera"
             );
@@ -3517,7 +3809,7 @@ async function toggleFullscreen() {
 
 
 /* =========================================================
-   PERMISSION MODAL
+   MODALS
    ========================================================= */
 
 function closePermissionModal() {
@@ -3538,13 +3830,6 @@ function handleVisibilityChange() {
     if (
         document.hidden
     ) {
-
-        /*
-           Do not destroy the camera stream.
-
-           iOS may temporarily suspend the camera while
-           the page is backgrounded.
-        */
 
         return;
 
@@ -3583,6 +3868,7 @@ function stopCamera() {
 
     state.stream =
         null;
+
 
     state.cameraReady =
         false;
@@ -3700,7 +3986,51 @@ function detectDevice() {
 
 
 /* =========================================================
-   UTILITY FUNCTIONS
+   TOAST
+   ========================================================= */
+
+let toastTimeout =
+    null;
+
+
+function showToast(message) {
+
+    if (!toast || !toastMessage) {
+        return;
+    }
+
+
+    toastMessage.textContent =
+        message;
+
+
+    toast.classList.add(
+        "show"
+    );
+
+
+    clearTimeout(
+        toastTimeout
+    );
+
+
+    toastTimeout =
+        setTimeout(
+            () => {
+
+                toast.classList.remove(
+                    "show"
+                );
+
+            },
+            3000
+        );
+
+}
+
+
+/* =========================================================
+   UTILITY
    ========================================================= */
 
 function clamp(
@@ -3720,7 +4050,9 @@ function clamp(
 }
 
 
-function clampByte(value) {
+function clampByte(
+    value
+) {
 
     return clamp(
         Math.round(value),
@@ -3764,8 +4096,7 @@ function formatDuration(
 
     const minutes =
         Math.floor(
-            (totalSeconds % 3600) /
-            60
+            (totalSeconds % 3600) / 60
         );
 
 
@@ -3774,14 +4105,19 @@ function formatDuration(
 
 
     return [
+
         hours,
         minutes,
         seconds
+
     ]
         .map(
             value =>
                 String(value)
-                    .padStart(2, "0")
+                    .padStart(
+                        2,
+                        "0"
+                    )
         )
         .join(":");
 
@@ -3904,7 +4240,9 @@ function createID() {
 }
 
 
-function csvEscape(value) {
+function csvEscape(
+    value
+) {
 
     const string =
         String(
@@ -3989,17 +4327,39 @@ function downloadTextFile(
 }
 
 
+function getModeDisplayName(
+    mode
+) {
+
+    const names = {
+
+        normal: "NORMAL",
+
+        green: "GREEN",
+
+        whitehot: "WHITE HOT",
+
+        negative: "NEGATIVE",
+
+        edge: "EDGE",
+
+        lowlight: "LOW LIGHT"
+
+    };
+
+
+    return (
+        names[mode] ||
+        "NORMAL"
+    );
+
+}
+
+
 /* =========================================================
    INITIAL STATE
    ========================================================= */
 
-setVisionMode("normal");
-
 updateControlDisplays();
 
 updateDiagnostics();
-
-
-/* =========================================================
-   END NIGHTflux v1
-   ========================================================= */
